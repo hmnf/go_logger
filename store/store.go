@@ -1,91 +1,39 @@
 package store
 
 import (
-	"bufio"
 	"fmt"
-	"net/url"
 	"sync"
-
-	"github.com/hmnf/go_logger/logger"
 )
 
-type Event struct {
-	Key   string
-	Value string
-}
-
-type Store struct {
-	values map[string]string
-	events chan Event
-	l      *logger.Logger
-	errors chan error
+type Storage[T any] struct {
+	store map[string]T
 	sync.RWMutex
 }
 
-func NewStorageService() (*Store, error) {
-	l, err := logger.NewLogger()
-
-	if err != nil {
-		return nil, fmt.Errorf("error: %w", err)
+func NewStorage[T any]() *Storage[T] {
+	return &Storage[T]{
+		store: make(map[string]T),
 	}
-
-	return &Store{
-		values: make(map[string]string),
-		l:      l,
-	}, nil
 }
 
-func (s *Store) Put(key, value string) {
+func (s *Storage[T]) Put(key string, value T) {
 	s.Lock()
-	fmt.Fprintf(s.l.File, "%s %s %s\n", "Put", key, value)
-	s.values[key] = value
-	fmt.Println(s.values)
+	s.store[key] = value
 	s.Unlock()
 }
 
-func (s *Store) Get(key string) string {
+func (s *Storage[T]) Get(key string) (*T, error) {
 	s.RLock()
-	defer s.RUnlock()
-	return s.values[key]
-}
-
-func (s *Store) Delete(key string) {
-	s.Lock()
-	fmt.Fprintf(s.l.File, "%s %s %v\n", "Delete", key, nil)
-	fmt.Println(s.values)
-	delete(s.values, key)
-	fmt.Println(s.values)
-	s.Unlock()
-}
-
-func (s *Store) Restore() {
-	scanner := bufio.NewScanner(s.l.File)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		var method, key, value string
-		fmt.Sscanf(line, "%s %s %s\n", &method, &key, &value)
-		value, _ = url.QueryUnescape(value)
-		switch method {
-		case "Put":
-			s.Put(key, value)
-		case "Delete":
-			s.Delete(key)
-		default:
-			fmt.Println("error")
-		}
-
+	value, ok := s.store[key]
+	s.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("key not found: %s", key)
 	}
+	return &value, nil
 }
 
-func (s *Store) Run() {
-	events := make(chan Event, 16)
-	errors := make(chan error, 1)
-
-	s.events = events
-	s.errors = errors
-
-	go func() {
-
-	}()
+func (s *Storage[T]) Delete(key string) {
+	s.Lock()
+	delete(s.store, key)
+	s.Unlock()
 }
